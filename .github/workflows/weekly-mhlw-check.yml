@@ -23,7 +23,19 @@ jobs:
           python-version: "3.12"
 
       - name: Run MHLW update check
-        run: python src/check_mhlw_updates.py
+        id: check
+        # 終了コード 2 = 新着あり、0 = 変更なし、1 = エラー
+        # continue-on-error で 2 を正常扱いにする
+        continue-on-error: true
+        run: |
+          python src/check_mhlw_updates.py
+          echo "exit_code=$?" >> "$GITHUB_OUTPUT"
+        env:
+          NOTIFY_SMTP_SERVER:   ${{ secrets.NOTIFY_SMTP_SERVER }}
+          NOTIFY_SMTP_PORT:     ${{ secrets.NOTIFY_SMTP_PORT }}
+          NOTIFY_EMAIL_FROM:    ${{ secrets.NOTIFY_EMAIL_FROM }}
+          NOTIFY_EMAIL_PASSWORD: ${{ secrets.NOTIFY_EMAIL_PASSWORD }}
+          NOTIFY_EMAIL_TO:      ${{ secrets.NOTIFY_EMAIL_TO }}
 
       - name: Commit report if changed
         run: |
@@ -36,3 +48,7 @@ jobs:
             git commit -m "data: 週次 厚生労働省更新チェック $(date +'%Y-%m-%d')"
             git push
           fi
+
+      - name: Fail if error (exit code 1)
+        if: steps.check.outputs.exit_code == '1'
+        run: exit 1
