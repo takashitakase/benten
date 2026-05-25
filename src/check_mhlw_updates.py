@@ -30,6 +30,7 @@ from pathlib import Path
 MHLW_R8_URL = "https://www.mhlw.go.jp/stf/newpage_67729.html"
 STATE_FILE = Path(__file__).parent.parent / "data" / "processed" / "mhlw_watch_state.json"
 REPORT_FILE = Path(__file__).parent.parent / "data" / "processed" / "weekly_report.md"
+ISSUE_BODY_FILE = Path(__file__).parent.parent / "data" / "processed" / "issue_body.md"
 
 JST = timezone(timedelta(hours=9))
 
@@ -122,6 +123,25 @@ def write_report(new_links: list[dict], all_links: list[dict], checked_at: str) 
     print(f"レポートを保存しました: {REPORT_FILE}")
 
 
+def write_issue_body(new_links: list[dict], checked_at: str) -> None:
+    """GitHub Issue 作成用の本文ファイルを書き出す。"""
+    lines = [
+        f"確認日時: **{checked_at}（JST）**",
+        "",
+        "以下の新しい情報が厚生労働省の改定ページに追加されました。",
+        "",
+    ]
+    for lnk in new_links:
+        lines.append(f"- [{lnk['text']}]({lnk['href']})")
+    lines += [
+        "",
+        "---",
+        f"監視URL: {MHLW_R8_URL}",
+    ]
+    ISSUE_BODY_FILE.parent.mkdir(parents=True, exist_ok=True)
+    ISSUE_BODY_FILE.write_text("\n".join(lines), encoding="utf-8")
+
+
 def build_email_html(new_links: list[dict], checked_at: str) -> str:
     items_html = "\n".join(
         f'<li><a href="{lnk["href"]}">{lnk["text"]}</a></li>'
@@ -208,6 +228,7 @@ def main() -> int:
     write_report(new_links, current_links, now_jst)
 
     if new_links:
+        write_issue_body(new_links, now_jst)
         try:
             send_email(new_links, now_jst)
         except Exception as exc:

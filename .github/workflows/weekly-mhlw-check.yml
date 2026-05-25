@@ -11,6 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      issues: write
 
     steps:
       - uses: actions/checkout@v4
@@ -25,29 +26,46 @@ jobs:
       - name: Run MHLW update check
         id: check
         # 終了コード 2 = 新着あり、0 = 変更なし、1 = エラー
-        # continue-on-error で 2 を正常扱いにする
         continue-on-error: true
         run: |
           python src/check_mhlw_updates.py
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
         env:
-          NOTIFY_SMTP_SERVER:   ${{ secrets.NOTIFY_SMTP_SERVER }}
-          NOTIFY_SMTP_PORT:     ${{ secrets.NOTIFY_SMTP_PORT }}
-          NOTIFY_EMAIL_FROM:    ${{ secrets.NOTIFY_EMAIL_FROM }}
+          NOTIFY_SMTP_SERVER:    ${{ secrets.NOTIFY_SMTP_SERVER }}
+          NOTIFY_SMTP_PORT:      ${{ secrets.NOTIFY_SMTP_PORT }}
+          NOTIFY_EMAIL_FROM:     ${{ secrets.NOTIFY_EMAIL_FROM }}
           NOTIFY_EMAIL_PASSWORD: ${{ secrets.NOTIFY_EMAIL_PASSWORD }}
-          NOTIFY_EMAIL_TO:      ${{ secrets.NOTIFY_EMAIL_TO }}
+          NOTIFY_EMAIL_TO:       ${{ secrets.NOTIFY_EMAIL_TO }}
 
       - name: Commit report if changed
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add data/processed/weekly_report.md data/processed/mhlw_watch_state.json || true
+          git add data/processed/weekly_report.md \
+                  data/processed/mhlw_watch_state.json \
+                  data/processed/issue_body.md 2>/dev/null || true
           if git diff --cached --quiet; then
             echo "変更なし — コミットをスキップします"
           else
             git commit -m "data: 週次 厚生労働省更新チェック $(date +'%Y-%m-%d')"
             git push
           fi
+
+      - name: Create GitHub Issue on new findings
+        if: steps.check.outputs.exit_code == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="【診療報酬改定】新着情報 $(date +'%Y-%m-%d')"
+          gh issue create \
+            --title "$TITLE" \
+            --body-file data/processed/issue_body.md \
+            --label "新着情報" \
+            --repo "$GITHUB_REPOSITORY" || \
+          gh issue create \
+            --title "$TITLE" \
+            --body-file data/processed/issue_body.md \
+            --repo "$GITHUB_REPOSITORY"
 
       - name: Fail if error (exit code 1)
         if: steps.check.outputs.exit_code == '1'
